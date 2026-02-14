@@ -1,5 +1,7 @@
 from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 import pdfplumber
 import io
 import os
@@ -28,11 +30,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ---------------- ROOT ----------------
+# ---------------- SERVE FRONTEND ----------------
+
+app.mount("/static", StaticFiles(directory="frontend"), name="static")
 
 @app.get("/")
-def home():
-    return {"status": "Earnings Transcript Analyzer Running"}
+async def serve_frontend():
+    return FileResponse("frontend/index.html")
 
 # ---------------- TRANSCRIPT CHECK ----------------
 
@@ -131,7 +135,6 @@ async def upload_pdf(file: UploadFile = File(...)):
     pdf_bytes = await file.read()
     extracted_text = ""
 
-    # -------- Extract Text --------
     try:
         with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
             for page in pdf.pages:
@@ -146,17 +149,14 @@ async def upload_pdf(file: UploadFile = File(...)):
             "error": "Could not extract text. Ensure PDF contains selectable text."
         }
 
-    # Limit size for free hosting safety
     extracted_text = extracted_text[:15000]
 
-    # -------- Check Transcript --------
     if not looks_like_transcript(extracted_text):
         return {
             "filename": file.filename,
             "analysis": "Document does not appear to be an earnings call transcript."
         }
 
-    # -------- Generate Summary --------
     try:
         summary = generate_summary(extracted_text)
     except Exception as e:
